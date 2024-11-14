@@ -22,7 +22,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut file = File::create("sql_logs.tsv")?;
     let mut rng = rand::thread_rng();
-
+    // 寫入 TSV 標題
+    writeln!(
+        file,
+        "conn_hash\tstmt_id\texec_id\texec_time\tsql_type\texe_status\tdb_ip\tclient_ip\tclient_host\tapp_name\tdb_user\tsql_hash\tfrom_tbs\tselect_cols\tsql_stmt\tstmt_bind_vars"
+    )?;
     // 隨機產生指定筆數的 SQL 日誌資料
     for _ in 0..num_entries {
         let conn_hash = format!("conn_{}", rng.gen::<u64>());
