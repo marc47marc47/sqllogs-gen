@@ -1,5 +1,6 @@
 use chrono::{Local, NaiveDateTime};
 use rand::Rng;
+use std::env;
 use std::error::Error;
 use std::fs::File;
 use std::io::Write;
@@ -9,11 +10,21 @@ const SQL_TYPES: [&str; 4] = ["SELECT", "INSERT", "UPDATE", "DELETE"];
 const STATUS: [&str; 2] = ["SUCCESS", "FAILURE"];
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let args: Vec<String> = env::args().collect();
+    let default_entries = 300;
+    let num_entries = if let Some(pos) = args.iter().position(|x| x == "-r") {
+        args.get(pos + 1)
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(default_entries)
+    } else {
+        default_entries
+    };
+
     let mut file = File::create("sql_logs.tsv")?;
     let mut rng = rand::thread_rng();
 
-    // 隨機產生 100 筆 SQL 日誌資料
-    for _ in 0..100 {
+    // 隨機產生指定筆數的 SQL 日誌資料
+    for _ in 0..num_entries {
         let conn_hash = format!("conn_{}", rng.gen::<u64>());
         let stmt_id = rng.gen_range(1..=1000);
         let exec_id = rng.gen_range(1..=10);
