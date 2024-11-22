@@ -1,4 +1,4 @@
-use chrono::{Local, NaiveDateTime};
+use chrono::{Local};
 use rand::Rng;
 use std::env;
 use std::error::Error;
@@ -7,7 +7,6 @@ use std::io::Write;
 use regex::Regex;
 
 // 定義 SQL 操作類型
-const SQL_TYPES: [&str; 4] = ["SELECT", "INSERT", "UPDATE", "DELETE"];
 const STATUS: [&str; 2] = ["SUCCESS", "FAILURE"];
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -29,7 +28,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         "conn_hash\tstmt_id\texec_id\texec_time\tsql_type\texe_status\tdb_ip\tclient_ip\tclient_host\tapp_name\tdb_user\tsql_hash\tfrom_tbs\tselect_cols\tsql_stmt\tstmt_bind_vars"
     )?;
     // 隨機產生指定筆數的 SQL 日誌資料
-    for _ in 0..num_entries {
+    for i in 0..num_entries {
+        if i % 1000 == 0 {
+            eprint!("\rGenerated {} entries...", i);
+        }
         let conn_hash = format!("conn_{}", rng.gen::<u64>());
         let stmt_id = rng.gen_range(1..=100);
         let exec_id = rng.gen_range(1..=1000);
@@ -42,6 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             0..=35 => "INSERT",
             36..=45 => "UPDATE",
             46..=50 => "DELETE",
+            51..=53 => "ALTER",
             _ => "SELECT",
         };
         let exe_status = STATUS[rng.gen_range(0..STATUS.len())];
@@ -52,7 +55,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         );
         let client_ip = format!("10.0.{}.{}", rng.gen_range(0..255), rng.gen_range(0..255));
         let client_host = ["ERP_USER1", "ERP_USER2", "ERP_USER3", "ERP_USER4", "ERP_USER5"][rng.gen_range(0..5)].to_string();
-        let app_name = ["ERP", "WEB App", "SQL Developer", "Toad", "PL/SQL Developer", "SQL*Plus", "DBeaver"][rng.gen_range(0..5)].to_string();
         let app_name = match rng.gen_range(0..100) {
             0..=50 => "ERP",
             51..=80 => "WEB App",
@@ -180,6 +182,15 @@ fn generate_sql_stmt(sql_type: &str, table: &str) -> String {
         "DELETE" => {
             let where_clause = generate_where_clause();
             format!("DELETE FROM {} {}", table, where_clause)
+        }
+        "ALTER" => {
+            let alter_clause = format!(
+                "ALTER TABLE {} ADD COLUMN {} {}",
+                table,
+                ["attribute01", "attribute02", "atttribute03"][rng.gen_range(0..3)],
+                ["VARCHAR(255)", "INT", "DATE"][rng.gen_range(0..3)]
+            );
+            format!("{}", alter_clause)
         }
         _ => String::new(),
     }
