@@ -4,6 +4,7 @@ use std::env;
 use std::error::Error;
 use std::fs::File;
 use std::io::Write;
+use regex::Regex;
 
 // 定義 SQL 操作類型
 const SQL_TYPES: [&str; 4] = ["SELECT", "INSERT", "UPDATE", "DELETE"];
@@ -30,10 +31,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     // 隨機產生指定筆數的 SQL 日誌資料
     for _ in 0..num_entries {
         let conn_hash = format!("conn_{}", rng.gen::<u64>());
-        let stmt_id = rng.gen_range(1..=1000);
-        let exec_id = rng.gen_range(1..=10);
-        let exec_time = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let sql_type = SQL_TYPES[rng.gen_range(0..SQL_TYPES.len())];
+        let stmt_id = rng.gen_range(1..=100);
+        let exec_id = rng.gen_range(1..=1000);
+        let exec_time = Local::now()
+            .checked_sub_signed(chrono::Duration::days(rng.gen_range(0..7)))
+            .unwrap()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        let sql_type = match rng.gen_range(0..100) {
+            0..=35 => "INSERT",
+            36..=45 => "UPDATE",
+            46..=50 => "DELETE",
+            _ => "SELECT",
+        };
         let exe_status = STATUS[rng.gen_range(0..STATUS.len())];
         let db_ip = format!(
             "192.168.{}.{}",
@@ -41,13 +51,23 @@ fn main() -> Result<(), Box<dyn Error>> {
             rng.gen_range(0..255)
         );
         let client_ip = format!("10.0.{}.{}", rng.gen_range(0..255), rng.gen_range(0..255));
-        let client_host = format!("host_{}", rng.gen_range(1..100));
-        let app_name = format!("app_{}", rng.gen_range(1..5));
-        let db_user = format!("user_{}", rng.gen_range(1..10));
+        let client_host = ["ERP_USER1", "ERP_USER2", "ERP_USER3", "ERP_USER4", "ERP_USER5"][rng.gen_range(0..5)].to_string();
+        let app_name = ["ERP", "WEB App", "SQL Developer", "Toad", "PL/SQL Developer", "SQL*Plus", "DBeaver"][rng.gen_range(0..5)].to_string();
+        let app_name = match rng.gen_range(0..100) {
+            0..=50 => "ERP",
+            51..=80 => "WEB App",
+            81..=85 => "SQL Developer",
+            86..=90 => "Toad",
+            91..=95 => "PL/SQL Developer",
+            _ => "SQL*Plus",
+        };
+        let db_user = ["SYS", "SYSTEM", "HR", "SCOTT", "OE", "SH", "PM", "IX", "APEX_040000", "ANONYMOUS"][rng.gen_range(0..10)].to_string();
         let sql_hash = format!("hash_{}", rng.gen::<u64>());
-        let from_tbs = format!("tbs_{}", rng.gen_range(1..5));
+        let table_names = ["users", "orders", "products", "departments", "employees", "salaries", "projects", "tasks", "events", "logs"];
+        let from_tbs = table_names[rng.gen_range(0..table_names.len())];
         let select_cols = generate_select_cols(sql_type);
-        let sql_stmt = generate_sql_stmt(sql_type);
+        let sql_stmt = generate_sql_stmt(sql_type, from_tbs);
+        let bind_vars_example = extract_where_values(&sql_stmt);
 
         // 寫入 TSV 格式的資料
         writeln!(
@@ -68,7 +88,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             from_tbs,
             select_cols,
             sql_stmt,
-            "bind_vars_example"
+            bind_vars_example
         )?;
     }
 
@@ -79,7 +99,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 // 隨機生成 SELECT 列名稱
 fn generate_select_cols(sql_type: &str) -> String {
     if sql_type == "SELECT" {
-        let columns = ["id", "name", "age", "salary", "department"];
+        let columns = ["id", "produc_name", "age", "salary","commission", "product","price", "event_date", "department", "comm", "creation_dae", "created_by", "updated_date", "updated_by"];
         let mut rng = rand::thread_rng();
         let mut cols: Vec<String> = Vec::new();
         for _ in 0..rng.gen_range(1..columns.len()) {
@@ -91,12 +111,46 @@ fn generate_select_cols(sql_type: &str) -> String {
     }
 }
 
+
+
+/// Extract numbers and text values from the WHERE clause in a SQL statement.
+///
+/// # Arguments
+/// * `sql` - A SQL statement containing a WHERE clause.
+///
+/// # Returns
+/// A String containing extracted numbers and text values.
+fn extract_where_values(sql: &str) -> String {
+    // Define regex for numbers and text values
+    let re = Regex::new(r"(?i)\bWHERE\b(.*)").unwrap(); // Match WHERE clause
+    if let Some(caps) = re.captures(sql) {
+        // Extract the WHERE clause
+        let where_clause = caps.get(1).unwrap().as_str();
+
+        // Define regex for numbers and text inside single quotes
+        let value_re = Regex::new(r"[-+]?\d+(\.\d+)?|'[^']*'").unwrap();
+
+        // Find all matches
+        let mut values = Vec::new();
+        for cap in value_re.captures_iter(where_clause) {
+            values.push(cap[0].to_string());
+        }
+
+        // Join extracted values into a single string
+        return values.join(", ");
+    }
+
+    // If no WHERE clause is found, return an empty string
+    String::new()
+}
+
+
+
 // 隨機生成 SQL 語句
-fn generate_sql_stmt(sql_type: &str) -> String {
+fn generate_sql_stmt(sql_type: &str, table: &str) -> String {
     let mut rng = rand::thread_rng();
     match sql_type {
         "SELECT" => {
-            let table = format!("table_{}", rng.gen_range(1..5));
             let where_clause = generate_where_clause();
             format!(
                 "SELECT {} FROM {} {}",
@@ -106,11 +160,10 @@ fn generate_sql_stmt(sql_type: &str) -> String {
             )
         }
         "INSERT" => {
-            let table = format!("table_{}", rng.gen_range(1..5));
             let values = format!(
                 "({}, '{}', {}, {})",
                 rng.gen_range(1..100),
-                "John Doe",
+                ["John Doe", "Jane Smith", "Alice Johnson", "Bob Brown", "Charlie Davis"][rng.gen_range(0..5)],
                 rng.gen_range(20..50),
                 rng.gen_range(3000..10000)
             );
@@ -120,13 +173,11 @@ fn generate_sql_stmt(sql_type: &str) -> String {
             )
         }
         "UPDATE" => {
-            let table = format!("table_{}", rng.gen_range(1..5));
             let set_clause = format!("SET salary = {}", rng.gen_range(3000..10000));
             let where_clause = generate_where_clause();
             format!("UPDATE {} {} {}", table, set_clause, where_clause)
         }
         "DELETE" => {
-            let table = format!("table_{}", rng.gen_range(1..5));
             let where_clause = generate_where_clause();
             format!("DELETE FROM {} {}", table, where_clause)
         }
@@ -144,9 +195,25 @@ fn generate_where_clause() -> String {
             "department = '{}'",
             ["HR", "Engineering", "Sales"][rng.gen_range(0..3)]
         ),
+        format!("commission = {:.2}", rng.gen_range(100.0..1000.0)),
         format!("name LIKE '{}%'", ["A", "B", "C"][rng.gen_range(0..3)]),
+        format!("last_update_by = '{}'", ["John Doe", "Jane Smith", "Alice Johnson", "Bob Brown", "Charlie Davis"][rng.gen_range(0..5)]),
+        format!("created_by = '{}'", ["John Doe", "Jane Smith", "Alice Johnson", "Bob Brown", "Charlie Davis"][rng.gen_range(0..5)]),
+        format!(
+            "event_date BETWEEN '{}' AND '{}' ",
+            Local::now()
+            .checked_sub_signed(chrono::Duration::days(rng.gen_range(0..7)))
+            .unwrap()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string(),
+            Local::now()
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string()
+        ),
+
+
     ];
-    let condition_count = rng.gen_range(1..=3);
+    let condition_count = rng.gen_range(4..=8);
     let mut selected_conditions = Vec::new();
     for _ in 0..condition_count {
         selected_conditions.push(conditions[rng.gen_range(0..conditions.len())].clone());
