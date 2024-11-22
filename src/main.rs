@@ -3,15 +3,22 @@ use rand::Rng;
 use std::env;
 use std::error::Error;
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use regex::Regex;
+
+use lazy_static::lazy_static;
+
+lazy_static! {
+    // Precompile regex patterns
+    static ref VALUE_RE: Regex = Regex::new(r"[-+]?\d+(\.\d+)?|'[^']*'").unwrap();
+}
 
 // 定義 SQL 操作類型
 const STATUS: [&str; 2] = ["SUCCESS", "FAILURE"];
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
-    let default_entries = 300;
+    let default_entries = 100000;
     let num_entries = if let Some(pos) = args.iter().position(|x| x == "-r") {
         args.get(pos + 1)
             .and_then(|s| s.parse::<usize>().ok())
@@ -20,17 +27,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         default_entries
     };
 
-    let mut file = File::create("sql_logs.tsv")?;
+    // 開啟檔案並使用 BufWriter 包裝
+    let file = File::create("sql_logs.tsv")?;
+    let mut writer = BufWriter::new(file);
     let mut rng = rand::thread_rng();
     // 寫入 TSV 標題
     writeln!(
-        file,
+        writer,
         "conn_hash\tstmt_id\texec_id\texec_time\tsql_type\texe_status\tdb_ip\tclient_ip\tclient_host\tapp_name\tdb_user\tsql_hash\tfrom_tbs\tselect_cols\tsql_stmt\tstmt_bind_vars"
     )?;
     // 隨機產生指定筆數的 SQL 日誌資料
     for i in 0..num_entries {
-        if i % 1000 == 0 {
-            eprint!("\rGenerated {} entries...", i);
+        if i % 10000 == 0 {
+            eprint!("\rGenerated {} entries...", i+10000);
         }
         let conn_hash = format!("conn_{}", rng.gen::<u64>());
         let stmt_id = rng.gen_range(1..=100);
@@ -69,12 +78,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         let from_tbs = table_names[rng.gen_range(0..table_names.len())];
         let select_cols = generate_select_cols(sql_type);
         let sql_stmt = generate_sql_stmt(sql_type, from_tbs);
+        //let bind_vars_example = "value1, value2, value3, 1, 2, 3, 4, '2024-01-01 00:00:00'".to_string();
         let bind_vars_example = extract_where_values(&sql_stmt);
 
         // 寫入 TSV 格式的資料
         writeln!(
-            file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            writer,
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             conn_hash,
             stmt_id,
             exec_id,
@@ -94,6 +104,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         )?;
     }
 
+    // 確保資料寫入檔案
+    writer.flush()?;
     println!("SQL logs generated and saved to sql_logs.tsv");
     Ok(())
 }
@@ -123,23 +135,21 @@ fn generate_select_cols(sql_type: &str) -> String {
 /// # Returns
 /// A String containing extracted numbers and text values.
 fn extract_where_values(sql: &str) -> String {
-    // Define regex for numbers and text values
-    let re = Regex::new(r"(?i)\bWHERE\b(.*)").unwrap(); // Match WHERE clause
-    if let Some(caps) = re.captures(sql) {
-        // Extract the WHERE clause
-        let where_clause = caps.get(1).unwrap().as_str();
+    // Find "WHERE" clause manually to avoid regex for this part
+    if let Some(where_start) = sql.to_uppercase().find("WHERE") {
+        // Extract the WHERE clause substring
+        let where_clause = &sql[where_start + 5..]; // Skip "WHERE"
 
-        // Define regex for numbers and text inside single quotes
-        let value_re = Regex::new(r"[-+]?\d+(\.\d+)?|'[^']*'").unwrap();
-
-        // Find all matches
-        let mut values = Vec::new();
-        for cap in value_re.captures_iter(where_clause) {
-            values.push(cap[0].to_string());
+        // Use precompiled regex to find matches
+        let mut result = String::new();
+        for cap in VALUE_RE.captures_iter(where_clause) {
+            if !result.is_empty() {
+                result.push_str(", ");
+            }
+            result.push_str(&cap[0]);
         }
 
-        // Join extracted values into a single string
-        return values.join(", ");
+        return result;
     }
 
     // If no WHERE clause is found, return an empty string
