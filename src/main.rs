@@ -29,7 +29,7 @@ fn main() -> std::io::Result<()> {
 
     // 開啟檔案並使用 BufWriter 包裝
     let file = File::create("sql_logs.tsv")?;
-    let mut writer = BufWriter::new(file);
+    let mut writer = BufWriter::with_capacity(1 * 1024 * 1024,file);
     let mut rng = rand::thread_rng();
     // 寫入 TSV 標題
     writeln!(
@@ -42,8 +42,8 @@ fn main() -> std::io::Result<()> {
             eprint!("\rGenerated {} entries...", i+10000);
         }
         let conn_hash = format!("conn_{}", rng.gen::<u64>());
-        let stmt_id = rng.gen_range(1..=100);
-        let exec_id = rng.gen_range(1..=1000);
+        let stmt_id = rng.gen_range(1..=30);
+        let exec_id = rng.gen_range(1..=10);
         let exec_time = Local::now()
             .checked_sub_signed(chrono::Duration::days(rng.gen_range(0..7)))
             .unwrap()
